@@ -1,0 +1,71 @@
+name: Build PDFs
+
+on:
+  push:
+    paths:
+      - "**.typ"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Typst
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz \
+            | tar -xJ --strip-components=1 typst-x86_64-unknown-linux-musl/typst
+          sudo install -m 755 typst /usr/local/bin/typst
+          typst --version
+
+      - name: Compile all lectures
+        shell: bash
+        run: |
+          mkdir -p out
+          status=0
+          while IFS= read -r -d '' f; do
+            name="${f#./}"
+            name="${name//\//-}"
+            out="out/${name%.typ}.pdf"
+            echo "::group::$f -> $out"
+            typst compile --root . "$f" "$out" || { echo "::error file=$f::compile failed"; status=1; }
+            echo "::endgroup::"
+          done < <(find . -name '*.typ' -not -name 'preamble.typ' -not -path './out/*' -print0)
+          exit $status
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes-pdf
+          path: out/*.pdf
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: notes-pdf
+          path: out
+
+      - name: Update rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes -R "$GITHUB_REPOSITORY" || true
+          gh release create latest out/*.pdf -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Конспекты (актуальная сборка)" \
+            --notes "Собрано из коммита $GITHUB_SHA"

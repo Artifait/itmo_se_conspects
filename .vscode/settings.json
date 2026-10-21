@@ -1,0 +1,10 @@
+{
+  "[typst]": {
+    "editor.defaultFormatter": "myriad-dreamin.tinymist",
+    "editor.formatOnSave": true,
+    "editor.wordWrap": "on",
+    "editor.tabSize": 2
+  },
+  "tinymist.formatterMode": "typstyle",
+  "tinymist.exportPdf": "never"
+}
